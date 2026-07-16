@@ -96,7 +96,7 @@ export async function GET(_request: NextRequest, context: RouteContext) {
   // 2) Supabase Storage (live site)
   const remote = await downloadFromSupabaseStorage(uploadCategory, locations.safeName);
   if (remote) {
-    return new NextResponse(remote.buffer, {
+    return new NextResponse(new Uint8Array(remote.buffer), {
       status: 200,
       headers: {
         "Content-Type": remote.contentType || getMimeType(locations.safeName),
