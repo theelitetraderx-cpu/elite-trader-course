@@ -32,7 +32,8 @@ const SEED_USERS: SeedUser[] = [
   {
     id: "admin-001",
     username: "admin",
-    password: process.env.ADMIN_SEED_PASSWORD || "ChangeMeImmediately!",
+    // Prefer Vercel/local env; fallback keeps production login working without setup
+    password: process.env.ADMIN_SEED_PASSWORD || "Haree@200716",
     full_name: "Elite Admin",
     email: process.env.ADMIN_SEED_EMAIL || "theelitetraderx@gmail.com",
     role: "super_admin",

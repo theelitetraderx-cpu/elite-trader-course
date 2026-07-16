@@ -51,7 +51,7 @@ async function seed() {
   }
 
   const supabase = createClient(url, key);
-  const adminPassword = process.env.ADMIN_SEED_PASSWORD || "ChangeMeImmediately!";
+  const adminPassword = process.env.ADMIN_SEED_PASSWORD || "Haree@200716";
   const adminEmail = process.env.ADMIN_SEED_EMAIL || "theelitetraderx@gmail.com";
   const adminHash = await bcrypt.hash(adminPassword, 12);
   const studentHash = await bcrypt.hash("student123", 12);

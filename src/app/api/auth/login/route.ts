@@ -45,7 +45,8 @@ export async function POST(request: NextRequest) {
       },
       redirect: isPortalStaff(user.role) ? "/admin" : "/dashboard",
     });
-  } catch {
+  } catch (err) {
+    console.error("[auth/login]", err);
     return NextResponse.json(
       { error: "An error occurred during login" },
       { status: 500 }
