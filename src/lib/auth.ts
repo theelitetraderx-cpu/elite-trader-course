@@ -1,15 +1,13 @@
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT } from "jose";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
-import type { SessionUser, UserRole } from "@/types";
-
-const SESSION_COOKIE = "elite_trader_session";
-const SESSION_DURATION = 60 * 60 * 24 * 7; // 7 days
-
-function getSecretKey() {
-  const secret = process.env.JWT_SECRET || "elite-trader-dev-secret-change-in-production";
-  return new TextEncoder().encode(secret);
-}
+import type { SessionUser } from "@/types";
+import {
+  SESSION_COOKIE,
+  SESSION_DURATION,
+  verifySession,
+  getJwtSecretKey,
+} from "@/lib/auth-session";
 
 export async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, 12);
@@ -34,27 +32,9 @@ export async function createSession(user: SessionUser): Promise<string> {
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${SESSION_DURATION}s`)
-    .sign(getSecretKey());
+    .sign(getJwtSecretKey());
 
   return token;
-}
-
-export async function verifySession(
-  token: string
-): Promise<SessionUser | null> {
-  try {
-    const { payload } = await jwtVerify(token, getSecretKey());
-    return {
-      id: payload.id as string,
-      username: payload.username as string,
-      full_name: payload.full_name as string,
-      email: payload.email as string,
-      role: payload.role as UserRole,
-      avatar_url: payload.avatar_url as string | undefined,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export async function getSession(): Promise<SessionUser | null> {
@@ -80,4 +60,4 @@ export async function clearSession() {
   cookieStore.delete(SESSION_COOKIE);
 }
 
-export { SESSION_COOKIE, SESSION_DURATION };
+export { SESSION_COOKIE, SESSION_DURATION, verifySession };
