@@ -1,0 +1,30 @@
+-- App-specific tables for The Elite Trader LMS
+-- Run after supabase/schema.sql
+
+CREATE TABLE IF NOT EXISTS app_course_programs (
+  id TEXT PRIMARY KEY DEFAULT 'programs',
+  programs JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS app_course_access (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id TEXT NOT NULL,
+  granted_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ,
+  PRIMARY KEY (user_id, course_id)
+);
+
+CREATE TABLE IF NOT EXISTS app_module_progress (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id TEXT NOT NULL,
+  module_id TEXT NOT NULL,
+  completed BOOLEAN DEFAULT false,
+  watch_time_seconds INTEGER DEFAULT 0,
+  completed_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, module_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_course_access_user ON app_course_access(user_id);
+CREATE INDEX IF NOT EXISTS idx_app_module_progress_user ON app_module_progress(user_id);
