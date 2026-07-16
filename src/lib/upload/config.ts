@@ -47,15 +47,6 @@ export function validateUploadFile(
   category: UploadCategory
 ): string | null {
   const config = UPLOAD_CONFIG[category];
-  // Vercel serverless body limit ~4.5MB — keep headroom
-  const vercelMax = 4 * 1024 * 1024;
-
-  if (process.env.VERCEL && file.size > vercelMax) {
-    if (category === "videos") {
-      return "On the live site, upload videos under 4MB or paste a YouTube/Vimeo link instead.";
-    }
-    return `On the live site, max upload size is ${formatFileSize(vercelMax)}. Try a smaller file.`;
-  }
 
   if (file.size > config.maxBytes) {
     return `File too large. Max size is ${formatFileSize(config.maxBytes)}.`;

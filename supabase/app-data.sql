@@ -35,3 +35,9 @@ CREATE TABLE IF NOT EXISTS app_json_documents (
   data JSONB NOT NULL DEFAULT '[]'::jsonb,
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Storage bucket for course videos / PPT / PDF (also creatable in Dashboard → Storage)
+-- Run in SQL editor if bucket API create is blocked:
+INSERT INTO storage.buckets (id, name, public, file_size_limit)
+VALUES ('course-content', 'course-content', false, 524288000)
+ON CONFLICT (id) DO UPDATE SET file_size_limit = 524288000;

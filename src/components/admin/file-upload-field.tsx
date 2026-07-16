@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import {
   formatFileSize,
   getAcceptString,
+  UPLOAD_CONFIG,
   type UploadCategory,
 } from "@/lib/upload/config";
 
@@ -20,6 +21,8 @@ interface FileUploadFieldProps {
   className?: string;
 }
 
+const DIRECT_UPLOAD_THRESHOLD = 3 * 1024 * 1024; // 3MB — under Vercel body limit
+
 export function FileUploadField({
   category,
   label = "Upload file",
@@ -32,29 +35,82 @@ export function FileUploadField({
 }: FileUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  const uploadViaServer = async (file: File) => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("category", category);
+
+    const res = await fetch("/api/admin/upload", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      if (data.useDirectUpload) {
+        await uploadDirectToCloud(file);
+        return;
+      }
+      throw new Error(data.error ?? "Upload failed");
+    }
+    onUploaded(data.url, data.fileName);
+  };
+
+  const uploadDirectToCloud = async (file: File) => {
+    setProgress("Preparing cloud upload…");
+    const signRes = await fetch("/api/admin/upload/sign", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        category,
+        fileName: file.name,
+        size: file.size,
+        contentType: file.type,
+      }),
+    });
+    const signData = await signRes.json();
+    if (!signRes.ok) throw new Error(signData.error ?? "Could not start cloud upload");
+
+    setProgress("Uploading to cloud storage…");
+    const putRes = await fetch(signData.signedUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+      },
+      body: file,
+    });
+
+    if (!putRes.ok) {
+      throw new Error("Cloud upload failed. Check Supabase Storage bucket permissions.");
+    }
+
+    onUploaded(signData.url, signData.fileName || file.name);
+  };
 
   const upload = async (file: File) => {
     setUploading(true);
     setError(null);
+    setProgress(null);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("category", category);
+      const max = UPLOAD_CONFIG[category].maxBytes;
+      if (file.size > max) {
+        throw new Error(`File too large. Max is ${formatFileSize(max)}.`);
+      }
 
-      const res = await fetch("/api/admin/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Upload failed");
-
-      onUploaded(data.url, data.fileName);
+      // Large files (and all on production) go straight to Supabase Storage
+      if (file.size > DIRECT_UPLOAD_THRESHOLD) {
+        await uploadDirectToCloud(file);
+      } else {
+        await uploadViaServer(file);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);
+      setProgress(null);
     }
   };
 
@@ -64,6 +120,10 @@ export function FileUploadField({
   };
 
   const hasFile = Boolean(value && fileName);
+  const defaultHint =
+    category === "videos"
+      ? `MP4 up to ${formatFileSize(UPLOAD_CONFIG.videos.maxBytes)} — or paste YouTube/Vimeo URL`
+      : `Max ${formatFileSize(UPLOAD_CONFIG[category].maxBytes)}`;
 
   return (
     <div className={cn("space-y-2", className)}>
@@ -127,7 +187,7 @@ export function FileUploadField({
           {uploading ? (
             <div className="flex flex-col items-center gap-2 text-[#A8A8A8]">
               <Loader2 className="w-8 h-8 animate-spin text-[#D4AF37]" />
-              <p className="text-sm">Uploading...</p>
+              <p className="text-sm">{progress ?? "Uploading…"}</p>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
@@ -135,7 +195,7 @@ export function FileUploadField({
               <p className="text-white text-sm font-medium">
                 Click or drag file to upload
               </p>
-              {hint && <p className="text-[#A8A8A8] text-xs">{hint}</p>}
+              <p className="text-[#A8A8A8] text-xs">{hint ?? defaultHint}</p>
             </div>
           )}
         </div>
