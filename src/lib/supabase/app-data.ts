@@ -5,7 +5,12 @@ import { createSupabaseAdmin, isSupabaseConfigured } from "@/lib/supabase/client
 const PROGRAMS_ROW_ID = "programs";
 
 export function isSupabaseDataEnabled() {
-  return isSupabaseConfigured && Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+  return (
+    isSupabaseConfigured &&
+    Boolean(
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SECRET_KEY
+    )
+  );
 }
 
 export async function fetchProgramsFromSupabase(): Promise<CourseProgram[] | null> {
