@@ -28,3 +28,10 @@ CREATE TABLE IF NOT EXISTS app_module_progress (
 
 CREATE INDEX IF NOT EXISTS idx_app_course_access_user ON app_course_access(user_id);
 CREATE INDEX IF NOT EXISTS idx_app_module_progress_user ON app_module_progress(user_id);
+
+-- Durable JSON bags for meetings, payments, and other admin data on serverless
+CREATE TABLE IF NOT EXISTS app_json_documents (
+  id TEXT PRIMARY KEY,
+  data JSONB NOT NULL DEFAULT '[]'::jsonb,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);

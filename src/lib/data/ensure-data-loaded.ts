@@ -9,18 +9,26 @@ import { ensurePaymentsLoaded } from "@/lib/data/payment-store";
 import { ensureAnnouncementsLoaded } from "@/lib/data/announcement-store";
 import { ensureSupportQueriesLoaded } from "@/lib/data/support-query-store";
 
+async function safe(label: string, fn: () => Promise<void>) {
+  try {
+    await fn();
+  } catch (err) {
+    console.warn(`[ensureAppDataLoaded] ${label} failed:`, err);
+  }
+}
+
 /** Load all persisted data before handling authenticated requests. */
 export async function ensureAppDataLoaded() {
   await Promise.all([
-    ensureProgramsLoaded(),
-    ensureUserCourseAccessLoaded(),
-    ensureProgressLoaded(),
-    ensureNotificationsLoaded(),
-    ensureSignalsLoaded(),
-    ensureMeetingsLoaded(),
-    ensureFavouriteCoinsLoaded(),
-    ensurePaymentsLoaded(),
-    ensureAnnouncementsLoaded(),
-    ensureSupportQueriesLoaded(),
+    safe("programs", ensureProgramsLoaded),
+    safe("courseAccess", ensureUserCourseAccessLoaded),
+    safe("progress", ensureProgressLoaded),
+    safe("notifications", ensureNotificationsLoaded),
+    safe("signals", ensureSignalsLoaded),
+    safe("meetings", ensureMeetingsLoaded),
+    safe("favouriteCoins", ensureFavouriteCoinsLoaded),
+    safe("payments", ensurePaymentsLoaded),
+    safe("announcements", ensureAnnouncementsLoaded),
+    safe("supportQueries", ensureSupportQueriesLoaded),
   ]);
 }

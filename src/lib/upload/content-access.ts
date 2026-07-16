@@ -1,5 +1,6 @@
 import { getPrograms } from "@/lib/data/course-content-store";
 import { getUserCourseIds } from "@/lib/data/user-store";
+import { isPortalStaff } from "@/lib/admin/roles";
 import type { SessionUser } from "@/types";
 import type { UploadCategory } from "@/lib/upload/config";
 import { extractUploadReference } from "@/lib/upload/storage-path";
@@ -55,7 +56,7 @@ export function canAccessUpload(
   category: UploadCategory,
   fileName: string
 ): boolean {
-  if (session.role === "admin") return true;
+  if (isPortalStaff(session.role)) return true;
 
   const enrolledIds = getUserCourseIds(session.id);
   if (!enrolledIds.length) return false;

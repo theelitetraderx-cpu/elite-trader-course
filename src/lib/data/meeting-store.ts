@@ -1,12 +1,16 @@
 import { readJsonFile, writeJsonFile } from "@/lib/data/persist";
+import { fetchJsonDocument, saveJsonDocument } from "@/lib/data/json-document-store";
 import type { LiveMeeting, MeetingAudience, MeetingStatus } from "@/types";
 import { broadcastToStudents } from "@/lib/data/notification-store";
 
 const MEETINGS_FILE = "meetings.json";
+const REMOTE_DOC_ID = "meetings";
 
 declare global {
   // eslint-disable-next-line no-var
   var __eliteMeetingStore: LiveMeeting[] | undefined;
+  // eslint-disable-next-line no-var
+  var __eliteMeetingsHydrated: boolean | undefined;
 }
 
 function loadStore(): LiveMeeting[] {
@@ -21,7 +25,9 @@ function getStore(): LiveMeeting[] {
 }
 
 function saveStore() {
-  writeJsonFile(MEETINGS_FILE, getStore());
+  const data = getStore();
+  writeJsonFile(MEETINGS_FILE, data);
+  void saveJsonDocument(REMOTE_DOC_ID, data);
 }
 
 export function uid(prefix = "meeting") {
@@ -29,9 +35,20 @@ export function uid(prefix = "meeting") {
 }
 
 export async function ensureMeetingsLoaded(): Promise<void> {
-  if (!global.__eliteMeetingStore) {
-    global.__eliteMeetingStore = loadStore();
+  if (global.__eliteMeetingsHydrated && global.__eliteMeetingStore) return;
+
+  const local = loadStore();
+  const remote = await fetchJsonDocument<LiveMeeting[]>(REMOTE_DOC_ID);
+
+  if (remote && remote.length >= local.length) {
+    global.__eliteMeetingStore = remote;
+    writeJsonFile(MEETINGS_FILE, remote);
+  } else {
+    global.__eliteMeetingStore = local;
+    if (local.length) void saveJsonDocument(REMOTE_DOC_ID, local);
   }
+
+  global.__eliteMeetingsHydrated = true;
 }
 
 export function listMeetings(): LiveMeeting[] {
@@ -63,6 +80,20 @@ export interface CreateMeetingInput {
   notify_students?: boolean;
 }
 
+function formatMeetingWhen(iso: string): string {
+  try {
+    return new Date(iso).toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return iso;
+  }
+}
+
 export function createMeeting(input: CreateMeetingInput): {
   meeting: LiveMeeting;
   notifiedCount: number;
@@ -86,17 +117,18 @@ export function createMeeting(input: CreateMeetingInput): {
 
   let notifiedCount = 0;
   if (input.notify_students !== false) {
-    const when = new Date(meeting.scheduled_at).toLocaleString(undefined, {
-      dateStyle: "medium",
-      timeStyle: "short",
-    });
-    const notifications = broadcastToStudents({
-      title: `Live Meeting: ${meeting.title}`,
-      message: `Scheduled for ${when}. Join link is available in your portal.`,
-      type: "meeting",
-      reference_id: meeting.id,
-    });
-    notifiedCount = notifications.length;
+    try {
+      const when = formatMeetingWhen(meeting.scheduled_at);
+      const notifications = broadcastToStudents({
+        title: `Live Meeting: ${meeting.title}`,
+        message: `Scheduled for ${when}. Join link is available in your portal.`,
+        type: "meeting",
+        reference_id: meeting.id,
+      });
+      notifiedCount = notifications.length;
+    } catch (err) {
+      console.warn("[meetings] notify failed:", err);
+    }
   }
 
   return { meeting, notifiedCount };

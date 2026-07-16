@@ -13,14 +13,25 @@ export async function saveUploadFile(
   category: UploadCategory
 ): Promise<{ url: string; fileName: string; size: number }> {
   const uploadsDir = getPrivateUploadDir(category);
-  await mkdir(uploadsDir, { recursive: true });
+
+  try {
+    await mkdir(uploadsDir, { recursive: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Cannot create upload folder";
+    throw new Error(`Upload storage unavailable: ${message}`);
+  }
 
   const safeName = sanitizeFilename(file.name);
   const uniqueName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${safeName}`;
   const diskPath = path.join(uploadsDir, uniqueName);
 
-  const buffer = Buffer.from(await file.arrayBuffer());
-  await writeFile(diskPath, buffer);
+  try {
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await writeFile(diskPath, buffer);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Write failed";
+    throw new Error(`Failed to save file: ${message}`);
+  }
 
   return {
     url: buildContentApiUrl(category, uniqueName),

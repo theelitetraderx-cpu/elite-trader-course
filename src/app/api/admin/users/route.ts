@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin/require-admin";
-import { canManageStaffRoles, isAdminRole } from "@/lib/admin/roles";
-import { createUser, listUsers, getStoredUserById, isProtectedSuperAdmin } from "@/lib/data/user-store";
+import { canManageStaffRoles } from "@/lib/admin/roles";
+import {
+  createUser,
+  listUsers,
+} from "@/lib/data/user-store";
 import { createSupabaseAdmin } from "@/lib/supabase/client";
 import { isSupabaseDataEnabled } from "@/lib/supabase/app-data";
 import { fetchAllCourseAccess, setCourseIdsForUser } from "@/lib/supabase/app-data";
@@ -26,42 +29,53 @@ function assertStaffRoleAssignment(role: UserRole | undefined, actorRole: UserRo
   if (!role || role === "student") return null;
   if (!canManageStaffRoles(actorRole)) {
     return NextResponse.json(
-      { error: "Only super admins can create admin or super admin accounts" },
+      { error: "Only admins can create staff accounts" },
       { status: 403 }
     );
   }
   return null;
 }
 
+function createLocalUser(data: z.infer<typeof createUserSchema>) {
+  return createUser({
+    ...data,
+    username: normalizeUsername(data.username),
+  });
+}
+
 export async function GET() {
   const auth = await requireAdmin();
   if ("response" in auth) return auth.response;
 
-  if (isSupabaseDataEnabled()) {
-    const supabase = createSupabaseAdmin();
-    if (!supabase) {
-      return NextResponse.json({ users: listUsers() });
+  try {
+    if (isSupabaseDataEnabled()) {
+      const supabase = createSupabaseAdmin();
+      if (supabase) {
+        const { data: users, error } = await supabase
+          .from("users")
+          .select(
+            "id, username, full_name, email, phone, role, status, avatar_url, expiry_date, created_at, updated_at, last_login"
+          )
+          .order("created_at", { ascending: false });
+
+        if (!error) {
+          const courseMap = await fetchAllCourseAccess();
+          const enriched = (users ?? []).map((u) => ({
+            ...u,
+            course_ids: courseMap.get(u.id) ?? [],
+          }));
+
+          // Merge any local-only users so creates still show up if Supabase lag/fails
+          const remoteIds = new Set(enriched.map((u) => u.id));
+          const localExtras = listUsers().filter((u) => !remoteIds.has(u.id));
+          return NextResponse.json({ users: [...enriched, ...localExtras] });
+        }
+
+        console.warn("[admin/users] Supabase list failed, using local store:", error.message);
+      }
     }
-
-    const { data: users, error } = await supabase
-      .from("users")
-      .select(
-        "id, username, full_name, email, phone, role, status, avatar_url, expiry_date, created_at, updated_at, last_login"
-      )
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    const courseMap = await fetchAllCourseAccess();
-
-    const enriched = (users ?? []).map((u) => ({
-      ...u,
-      course_ids: courseMap.get(u.id) ?? [],
-    }));
-
-    return NextResponse.json({ users: enriched });
+  } catch (err) {
+    console.warn("[admin/users] GET fallback to local:", err);
   }
 
   return NextResponse.json({ users: listUsers() });
@@ -87,53 +101,51 @@ export async function POST(request: NextRequest) {
 
     if (isSupabaseDataEnabled()) {
       const supabase = createSupabaseAdmin();
-      if (!supabase) {
-        const user = createUser({
-          ...data,
-          username: normalizeUsername(data.username),
-        });
-        return NextResponse.json({ user });
+      if (supabase) {
+        try {
+          const password_hash = await hashPassword(data.password);
+          const normalizedUsername = normalizeUsername(data.username);
+          const { data: user, error } = await supabase
+            .from("users")
+            .insert({
+              username: normalizedUsername,
+              password_hash,
+              full_name: data.full_name.trim(),
+              email: data.email.trim().toLowerCase(),
+              phone: data.phone?.trim() || null,
+              role: data.role ?? "student",
+              status: data.status ?? "active",
+              expiry_date: data.expiry_date || null,
+            })
+            .select(
+              "id, username, full_name, email, phone, role, status, avatar_url, expiry_date, created_at, updated_at, last_login"
+            )
+            .single();
+
+          if (!error && user) {
+            if (data.course_ids?.length) {
+              await setCourseIdsForUser(user.id, data.course_ids);
+            }
+            return NextResponse.json({
+              user: { ...user, course_ids: data.course_ids ?? [] },
+            });
+          }
+
+          console.warn(
+            "[admin/users] Supabase create failed, using local store:",
+            error?.message
+          );
+        } catch (err) {
+          console.warn("[admin/users] Supabase create threw, using local store:", err);
+        }
       }
-
-      const password_hash = await hashPassword(data.password);
-      const normalizedUsername = normalizeUsername(data.username);
-      const { data: user, error } = await supabase
-        .from("users")
-        .insert({
-          username: normalizedUsername,
-          password_hash,
-          full_name: data.full_name.trim(),
-          email: data.email.trim().toLowerCase(),
-          phone: data.phone?.trim() || null,
-          role: data.role ?? "student",
-          status: data.status ?? "active",
-          expiry_date: data.expiry_date || null,
-        })
-        .select(
-          "id, username, full_name, email, phone, role, status, avatar_url, expiry_date, created_at, updated_at, last_login"
-        )
-        .single();
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-
-      if (data.course_ids?.length) {
-        await setCourseIdsForUser(user.id, data.course_ids);
-      }
-
-      return NextResponse.json({
-        user: { ...user, course_ids: data.course_ids ?? [] },
-      });
     }
 
-    const user = createUser({
-      ...data,
-      username: normalizeUsername(data.username),
-    });
+    const user = createLocalUser(data);
     return NextResponse.json({ user });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create user";
+    console.error("[admin/users] POST", err);
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }

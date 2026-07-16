@@ -1,4 +1,5 @@
 import { readJsonFile, writeJsonFile } from "@/lib/data/persist";
+import { fetchJsonDocument, saveJsonDocument } from "@/lib/data/json-document-store";
 import type {
   PaymentMethod,
   PaymentPlanType,
@@ -7,10 +8,13 @@ import type {
 } from "@/types";
 
 const PAYMENTS_FILE = "payments.json";
+const REMOTE_DOC_ID = "payments";
 
 declare global {
   // eslint-disable-next-line no-var
   var __elitePaymentStore: PaymentRecord[] | undefined;
+  // eslint-disable-next-line no-var
+  var __elitePaymentsHydrated: boolean | undefined;
 }
 
 const SEED_PAYMENTS: PaymentRecord[] = [
@@ -90,7 +94,7 @@ function loadStore(): PaymentRecord[] {
   const stored = readJsonFile<PaymentRecord[]>(PAYMENTS_FILE);
   if (stored && stored.length > 0) return stored;
   writeJsonFile(PAYMENTS_FILE, SEED_PAYMENTS);
-  return SEED_PAYMENTS;
+  return [...SEED_PAYMENTS];
 }
 
 function getStore(): PaymentRecord[] {
@@ -101,7 +105,9 @@ function getStore(): PaymentRecord[] {
 }
 
 function saveStore() {
-  writeJsonFile(PAYMENTS_FILE, getStore());
+  const data = getStore();
+  writeJsonFile(PAYMENTS_FILE, data);
+  void saveJsonDocument(REMOTE_DOC_ID, data);
 }
 
 export function uid(prefix = "pay") {
@@ -109,9 +115,20 @@ export function uid(prefix = "pay") {
 }
 
 export async function ensurePaymentsLoaded(): Promise<void> {
-  if (!global.__elitePaymentStore) {
-    global.__elitePaymentStore = loadStore();
+  if (global.__elitePaymentsHydrated && global.__elitePaymentStore) return;
+
+  const local = loadStore();
+  const remote = await fetchJsonDocument<PaymentRecord[]>(REMOTE_DOC_ID);
+
+  if (remote && remote.length >= local.length) {
+    global.__elitePaymentStore = remote;
+    writeJsonFile(PAYMENTS_FILE, remote);
+  } else {
+    global.__elitePaymentStore = local;
+    if (local.length) void saveJsonDocument(REMOTE_DOC_ID, local);
   }
+
+  global.__elitePaymentsHydrated = true;
 }
 
 export function listPayments(): PaymentRecord[] {

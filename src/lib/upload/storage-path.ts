@@ -1,8 +1,14 @@
 import path from "path";
 import type { UploadCategory } from "./config";
 
+const isVercel = Boolean(process.env.VERCEL);
+
 export const LEGACY_PUBLIC_UPLOADS = path.join(process.cwd(), "public", "uploads");
-export const PRIVATE_UPLOADS = path.join(process.cwd(), "storage", "uploads");
+
+/** Private uploads — /tmp on Vercel (writable), local storage otherwise */
+export const PRIVATE_UPLOADS = isVercel
+  ? path.join("/tmp", "elite-trader-uploads")
+  : path.join(process.cwd(), "storage", "uploads");
 
 export function getPrivateUploadDir(category: UploadCategory): string {
   return path.join(PRIVATE_UPLOADS, category);

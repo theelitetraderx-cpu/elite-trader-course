@@ -69,52 +69,60 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
     if (isSupabaseDataEnabled()) {
       const supabase = createSupabaseAdmin();
-      if (!supabase) {
-        return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+      if (supabase) {
+        try {
+          const updates: Record<string, unknown> = {
+            updated_at: new Date().toISOString(),
+          };
+          const data = parsed.data;
+
+          if (data.username !== undefined)
+            updates.username = normalizeUsername(data.username);
+          if (data.full_name !== undefined) updates.full_name = data.full_name.trim();
+          if (data.email !== undefined) updates.email = data.email.trim().toLowerCase();
+          if (data.phone !== undefined) updates.phone = data.phone.trim() || null;
+          if (data.role !== undefined) updates.role = data.role;
+          if (data.status !== undefined) updates.status = data.status;
+          if (data.expiry_date !== undefined) {
+            updates.expiry_date = data.expiry_date || null;
+          }
+
+          const { data: user, error } = await supabase
+            .from("users")
+            .update(updates)
+            .eq("id", id)
+            .select(
+              "id, username, full_name, email, phone, role, status, avatar_url, expiry_date, created_at, updated_at, last_login"
+            )
+            .single();
+
+          if (!error && user) {
+            if (data.course_ids !== undefined) {
+              await setCourseIdsForUser(id, data.course_ids);
+            }
+
+            let courseIds = data.course_ids;
+            if (courseIds === undefined) {
+              const { data: access } = await supabase
+                .from("app_course_access")
+                .select("course_id")
+                .eq("user_id", id);
+              courseIds = (access ?? []).map((row) => row.course_id);
+            }
+
+            return NextResponse.json({
+              user: { ...user, course_ids: courseIds },
+            });
+          }
+
+          console.warn(
+            "[admin/users] Supabase update failed, using local:",
+            error?.message
+          );
+        } catch (err) {
+          console.warn("[admin/users] Supabase update threw, using local:", err);
+        }
       }
-
-      const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-      const data = parsed.data;
-
-      if (data.username !== undefined) updates.username = normalizeUsername(data.username);
-      if (data.full_name !== undefined) updates.full_name = data.full_name.trim();
-      if (data.email !== undefined) updates.email = data.email.trim().toLowerCase();
-      if (data.phone !== undefined) updates.phone = data.phone.trim() || null;
-      if (data.role !== undefined) updates.role = data.role;
-      if (data.status !== undefined) updates.status = data.status;
-      if (data.expiry_date !== undefined) {
-        updates.expiry_date = data.expiry_date || null;
-      }
-
-      const { data: user, error } = await supabase
-        .from("users")
-        .update(updates)
-        .eq("id", id)
-        .select(
-          "id, username, full_name, email, phone, role, status, avatar_url, expiry_date, created_at, updated_at, last_login"
-        )
-        .single();
-
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-
-      if (data.course_ids !== undefined) {
-        await setCourseIdsForUser(id, data.course_ids);
-      }
-
-      let courseIds = data.course_ids;
-      if (courseIds === undefined) {
-        const { data: access } = await supabase
-          .from("app_course_access")
-          .select("course_id")
-          .eq("user_id", id);
-        courseIds = (access ?? []).map((row) => row.course_id);
-      }
-
-      return NextResponse.json({
-        user: { ...user, course_ids: courseIds },
-      });
     }
 
     const user = updateUser(id, parsed.data);
@@ -156,22 +164,18 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
   try {
     if (isSupabaseDataEnabled()) {
       const supabase = createSupabaseAdmin();
-      if (!supabase) {
-        return NextResponse.json({ error: "Database unavailable" }, { status: 503 });
+      if (supabase) {
+        const { error } = await supabase.from("users").delete().eq("id", id);
+        if (!error) {
+          try {
+            if (getStoredUserById(id)) deleteUser(id);
+          } catch {
+            /* local copy optional */
+          }
+          return NextResponse.json({ success: true });
+        }
+        console.warn("[admin/users] Supabase delete failed, using local:", error.message);
       }
-
-      const { error } = await supabase.from("users").delete().eq("id", id);
-      if (error) {
-        return NextResponse.json({ error: error.message }, { status: 400 });
-      }
-      return NextResponse.json({ success: true });
-    }
-
-    if (isProtectedSuperAdmin(id)) {
-      return NextResponse.json(
-        { error: "The primary super admin account cannot be deleted" },
-        { status: 400 }
-      );
     }
 
     if (!getStoredUserById(id)) {
