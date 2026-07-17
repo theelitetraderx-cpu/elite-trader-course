@@ -166,7 +166,12 @@ export async function sendMeetingInviteEmails(
 
   const recipients = getMeetingEmailRecipients(meeting.audience);
   if (recipients.length === 0) {
-    return { sent: 0, failed: 0, skipped: false };
+    return {
+      sent: 0,
+      failed: 0,
+      skipped: false,
+      error: "No active students with email addresses to notify",
+    };
   }
 
   const subject =

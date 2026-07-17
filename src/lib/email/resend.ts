@@ -12,7 +12,7 @@ export function getResendClient(): Resend | null {
 export function getResendFromAddress(): string {
   return (
     process.env.RESEND_FROM_EMAIL?.trim() ||
-    "The Elite Trader <onboarding@resend.dev>"
+    "The Elite Trader <noreply@theelitetrader.in>"
   );
 }
 
