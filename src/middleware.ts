@@ -6,9 +6,9 @@ const LOGIN_PATH = "/login";
 const ADMIN_PREFIX = "/admin";
 const DASHBOARD_PREFIX = "/dashboard";
 
-const PUBLIC_ROUTES = new Set([
+/** Old marketing URLs — always send visitors to login / portal */
+const MARKETING_PATHS = new Set([
   "/",
-  "/login",
   "/courses",
   "/pricing",
   "/contact",
@@ -24,17 +24,13 @@ const STUDENT_ALLOWED_PATHS = new Set([
   "/dashboard/meetings",
 ]);
 
-function isPublicRoute(pathname: string) {
-  return PUBLIC_ROUTES.has(pathname);
-}
-
 function isStudentAllowedPath(pathname: string) {
   return STUDENT_ALLOWED_PATHS.has(pathname);
 }
 
 function redirectToLogin(request: NextRequest, pathname: string) {
   const loginUrl = new URL(LOGIN_PATH, request.url);
-  if (pathname !== "/" && pathname !== LOGIN_PATH) {
+  if (pathname !== "/" && pathname !== LOGIN_PATH && !MARKETING_PATHS.has(pathname)) {
     loginUrl.searchParams.set("redirect", pathname);
   }
   return NextResponse.redirect(loginUrl);
@@ -56,8 +52,11 @@ export async function middleware(request: NextRequest) {
   const session = token ? await verifySession(token) : null;
 
   if (!session) {
-    if (pathname === LOGIN_PATH || isPublicRoute(pathname)) {
+    if (pathname === LOGIN_PATH) {
       return NextResponse.next();
+    }
+    if (MARKETING_PATHS.has(pathname)) {
+      return redirectToLogin(request, pathname);
     }
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -75,7 +74,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(contentUrl);
   }
 
-  if (pathname === LOGIN_PATH) {
+  if (pathname === LOGIN_PATH || MARKETING_PATHS.has(pathname)) {
     return redirectByRole(request, session.role);
   }
 
@@ -103,7 +102,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|images|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|images|icon|apple-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
     "/uploads/:path*",
   ],
 };

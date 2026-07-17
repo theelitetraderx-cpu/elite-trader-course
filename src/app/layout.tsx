@@ -17,8 +17,9 @@ export const metadata: Metadata = {
     "The premier learning platform for modern futures and crypto traders. Master professional strategies and risk management with The Elite Trader.",
   keywords: ["trading", "forex", "futures", "crypto", "signals", "elite trader", "theelitetrader"],
   icons: {
-    icon: "/images/logo.png",
-    apple: "/images/logo.png",
+    icon: [{ url: "/images/logo.png", type: "image/png" }],
+    apple: [{ url: "/images/logo.png", type: "image/png" }],
+    shortcut: "/images/logo.png",
   },
 };
 
