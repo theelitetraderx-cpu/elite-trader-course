@@ -265,6 +265,33 @@ export function MeetingManager() {
     }
   };
 
+  const resendEmails = async (id: string, status: MeetingStatus) => {
+    setActionId(id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(`/api/admin/meetings?id=${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resend_emails: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send emails");
+      const emailed = data.emailed_count ?? 0;
+      if (emailed === 0) {
+        setError(data.email_error || "No emails were sent");
+      } else {
+        setSuccess(
+          `Email sent to ${emailed} recipient${emailed !== 1 ? "s" : ""} (${status === "live" ? "Join Now" : "invite"}).`
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send emails");
+    } finally {
+      setActionId(null);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!confirm("Delete this meeting permanently?")) return;
     setActionId(id);
@@ -761,6 +788,21 @@ export function MeetingManager() {
                     </div>
 
                     <div className="flex flex-wrap gap-2 shrink-0">
+                      {(meeting.status === "scheduled" || meeting.status === "live") && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={actionId === meeting.id}
+                          onClick={() => resendEmails(meeting.id, meeting.status)}
+                        >
+                          {actionId === meeting.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Bell className="w-3.5 h-3.5" />
+                          )}
+                          Send Email
+                        </Button>
+                      )}
                       {meeting.status === "scheduled" && (
                         <Button
                           variant="gold"

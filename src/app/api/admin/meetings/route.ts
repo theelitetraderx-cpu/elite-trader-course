@@ -37,6 +37,8 @@ const updateSchema = z.object({
   duration_minutes: z.number().min(15).max(480).optional(),
   audience: z.enum(["all", "pro_elite"]).optional(),
   status: z.enum(["scheduled", "live", "completed", "cancelled"]).optional(),
+  /** Re-send invite/live emails without changing other fields */
+  resend_emails: z.boolean().optional(),
 });
 
 export async function GET() {
@@ -119,12 +121,19 @@ export async function PATCH(request: NextRequest) {
     }
 
     await ensureAppDataLoaded();
-    const meeting = updateMeeting(id, parsed.data);
+    const { resend_emails, ...meetingFields } = parsed.data;
+    const meeting = updateMeeting(id, meetingFields);
 
     let emailedCount = 0;
     let emailError: string | undefined;
-    if (parsed.data.status === "live") {
-      const emailResult = await sendMeetingInviteEmails(meeting, "live", {
+    const shouldEmail =
+      resend_emails === true || parsed.data.status === "live";
+    if (shouldEmail) {
+      const kind =
+        meeting.status === "live" || parsed.data.status === "live"
+          ? "live"
+          : "scheduled";
+      const emailResult = await sendMeetingInviteEmails(meeting, kind, {
         creatorEmail: auth.session.email,
         creatorName: auth.session.full_name,
         creatorId: auth.session.id,
