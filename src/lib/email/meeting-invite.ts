@@ -1,5 +1,5 @@
 import type { LiveMeeting, MeetingAudience } from "@/types";
-import { BRAND } from "@/lib/constants";
+import { BRAND, CONTACT } from "@/lib/constants";
 import { listUsers, getUserCourseIds } from "@/lib/data/user-store";
 import {
   getResendClient,
@@ -47,21 +47,70 @@ function hasProOrElite(userId: string): boolean {
   );
 }
 
+function normalizeEmail(email: string): string {
+  return email.trim().toLowerCase();
+}
+
+function isValidEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+}
+
 export function getMeetingEmailRecipients(
-  audience: MeetingAudience = "all"
+  audience: MeetingAudience = "all",
+  extra?: { email?: string; full_name?: string; id?: string }[]
 ): MeetingEmailRecipient[] {
-  return listUsers()
-    .filter((user) => user.role === "student" && user.status === "active")
-    .filter((user) => {
-      if (!user.email?.includes("@")) return false;
-      if (audience === "pro_elite" && !hasProOrElite(user.id)) return false;
-      return true;
-    })
-    .map((user) => ({
-      id: user.id,
-      email: user.email.trim(),
-      full_name: user.full_name,
-    }));
+  const byEmail = new Map<string, MeetingEmailRecipient>();
+
+  const add = (recipient: MeetingEmailRecipient) => {
+    if (!isValidEmail(recipient.email)) return;
+    const key = normalizeEmail(recipient.email);
+    if (!byEmail.has(key)) byEmail.set(key, recipient);
+  };
+
+  for (const user of listUsers()) {
+    if (user.status !== "active" || !user.email) continue;
+
+    if (user.role === "student") {
+      if (audience === "pro_elite" && !hasProOrElite(user.id)) continue;
+      add({
+        id: user.id,
+        email: user.email.trim(),
+        full_name: user.full_name,
+      });
+      continue;
+    }
+
+    // Always CC active staff so admins receive a copy
+    if (
+      user.role === "super_admin" ||
+      user.role === "admin" ||
+      user.role === "moderator"
+    ) {
+      add({
+        id: user.id,
+        email: user.email.trim(),
+        full_name: user.full_name,
+      });
+    }
+  }
+
+  // Brand contact always gets a copy
+  add({
+    id: "brand-contact",
+    email: CONTACT.email,
+    full_name: BRAND.shortName,
+  });
+
+  for (const person of extra ?? []) {
+    if (!person.email) continue;
+    add({
+      id: person.id || `extra-${normalizeEmail(person.email)}`,
+      email: person.email.trim(),
+      full_name: person.full_name?.trim() || "Admin",
+    });
+  }
+
+  return [...byEmail.values()];
 }
 
 function buildMeetingEmailHtml(
@@ -152,25 +201,48 @@ function escapeAttr(value: string): string {
 
 export async function sendMeetingInviteEmails(
   meeting: LiveMeeting,
-  kind: MeetingEmailKind = "scheduled"
+  kind: MeetingEmailKind = "scheduled",
+  options?: {
+    creatorEmail?: string;
+    creatorName?: string;
+    creatorId?: string;
+  }
 ): Promise<{ sent: number; failed: number; skipped: boolean; error?: string }> {
   if (!isResendConfigured()) {
     console.warn("[email] RESEND_API_KEY not set — skipping meeting emails");
-    return { sent: 0, failed: 0, skipped: true, error: "Resend not configured" };
+    return {
+      sent: 0,
+      failed: 0,
+      skipped: true,
+      error:
+        "RESEND_API_KEY is missing on this Vercel project. Add it under Settings → Environment Variables, then redeploy.",
+    };
   }
 
   const resend = getResendClient();
   if (!resend) {
-    return { sent: 0, failed: 0, skipped: true, error: "Resend not configured" };
+    return {
+      sent: 0,
+      failed: 0,
+      skipped: true,
+      error: "Resend client failed to initialize",
+    };
   }
 
-  const recipients = getMeetingEmailRecipients(meeting.audience);
+  const recipients = getMeetingEmailRecipients(meeting.audience, [
+    {
+      id: options?.creatorId,
+      email: options?.creatorEmail,
+      full_name: options?.creatorName,
+    },
+  ]);
+
   if (recipients.length === 0) {
     return {
       sent: 0,
       failed: 0,
       skipped: false,
-      error: "No active students with email addresses to notify",
+      error: "No recipients with valid email addresses",
     };
   }
 
@@ -183,7 +255,6 @@ export async function sendMeetingInviteEmails(
   let failed = 0;
   let lastError: string | undefined;
 
-  // Resend allows batch; send individually for clearer per-user failures
   for (const recipient of recipients) {
     try {
       const { error } = await resend.emails.send({
@@ -195,7 +266,10 @@ export async function sendMeetingInviteEmails(
       if (error) {
         failed += 1;
         lastError = error.message;
-        console.warn(`[email] meeting mail failed for ${recipient.email}:`, error.message);
+        console.warn(
+          `[email] meeting mail failed for ${recipient.email}:`,
+          error.message
+        );
       } else {
         sent += 1;
       }

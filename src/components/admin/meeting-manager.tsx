@@ -211,10 +211,11 @@ export function MeetingManager() {
       const count = data.notified_count ?? 0;
       const emailed = data.emailed_count ?? 0;
       if (data.email_error && emailed === 0) {
+        setError(`Meeting saved, but email failed: ${data.email_error}`);
         setSuccess(
           count > 0
-            ? `Meeting scheduled! ${count} in-app notification${count !== 1 ? "s" : ""}. Email not sent: ${data.email_error}`
-            : `Meeting scheduled. Email not sent: ${data.email_error}`
+            ? `Meeting scheduled. ${count} in-app notification${count !== 1 ? "s" : ""} created.`
+            : "Meeting scheduled."
         );
       } else {
         setSuccess(
@@ -245,13 +246,16 @@ export function MeetingManager() {
       await loadMeetings();
       if (status === "live") {
         const emailed = data.emailed_count ?? 0;
-        setSuccess(
-          emailed > 0
-            ? `Session is live — Join Now email sent to ${emailed} student${emailed !== 1 ? "s" : ""}!`
-            : data.email_error
-              ? `Session is live. Email not sent: ${data.email_error}`
+        if (data.email_error && emailed === 0) {
+          setError(`Live now, but email failed: ${data.email_error}`);
+          setSuccess("Session is now live — students can join in the portal.");
+        } else {
+          setSuccess(
+            emailed > 0
+              ? `Session is live — Join Now email sent to ${emailed} recipient${emailed !== 1 ? "s" : ""}!`
               : "Session is now live — students can join!"
-        );
+          );
+        }
       } else if (status === "completed") setSuccess("Meeting marked as completed.");
       else if (status === "cancelled") setSuccess("Meeting cancelled.");
     } catch (err) {

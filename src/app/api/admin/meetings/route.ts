@@ -78,7 +78,11 @@ export async function POST(request: NextRequest) {
     let emailedCount = 0;
     let emailError: string | undefined;
     if (notify) {
-      const emailResult = await sendMeetingInviteEmails(meeting, "scheduled");
+      const emailResult = await sendMeetingInviteEmails(meeting, "scheduled", {
+        creatorEmail: auth.session.email,
+        creatorName: auth.session.full_name,
+        creatorId: auth.session.id,
+      });
       emailedCount = emailResult.sent;
       emailError = emailResult.error;
     }
@@ -120,7 +124,11 @@ export async function PATCH(request: NextRequest) {
     let emailedCount = 0;
     let emailError: string | undefined;
     if (parsed.data.status === "live") {
-      const emailResult = await sendMeetingInviteEmails(meeting, "live");
+      const emailResult = await sendMeetingInviteEmails(meeting, "live", {
+        creatorEmail: auth.session.email,
+        creatorName: auth.session.full_name,
+        creatorId: auth.session.id,
+      });
       emailedCount = emailResult.sent;
       emailError = emailResult.error;
     }
