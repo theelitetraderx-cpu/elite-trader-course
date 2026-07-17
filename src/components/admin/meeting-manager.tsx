@@ -209,11 +209,20 @@ export function MeetingManager() {
       await loadMeetings();
 
       const count = data.notified_count ?? 0;
-      setSuccess(
-        count > 0
-          ? `Meeting scheduled! ${count} student${count !== 1 ? "s" : ""} notified.`
-          : "Meeting scheduled! No active students to notify yet."
-      );
+      const emailed = data.emailed_count ?? 0;
+      if (data.email_error && emailed === 0) {
+        setSuccess(
+          count > 0
+            ? `Meeting scheduled! ${count} in-app notification${count !== 1 ? "s" : ""}. Email not sent: ${data.email_error}`
+            : `Meeting scheduled. Email not sent: ${data.email_error}`
+        );
+      } else {
+        setSuccess(
+          `Meeting scheduled! ${count} in-app notification${count !== 1 ? "s" : ""}${
+            emailed > 0 ? `, ${emailed} email${emailed !== 1 ? "s" : ""} sent.` : "."
+          }`
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create meeting");
     } finally {
@@ -234,8 +243,16 @@ export function MeetingManager() {
       if (!res.ok) throw new Error(data.error ?? "Failed to update meeting");
 
       await loadMeetings();
-      if (status === "live") setSuccess("Session is now live — students can join!");
-      else if (status === "completed") setSuccess("Meeting marked as completed.");
+      if (status === "live") {
+        const emailed = data.emailed_count ?? 0;
+        setSuccess(
+          emailed > 0
+            ? `Session is live — Join Now email sent to ${emailed} student${emailed !== 1 ? "s" : ""}!`
+            : data.email_error
+              ? `Session is live. Email not sent: ${data.email_error}`
+              : "Session is now live — students can join!"
+        );
+      } else if (status === "completed") setSuccess("Meeting marked as completed.");
       else if (status === "cancelled") setSuccess("Meeting cancelled.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update meeting");
@@ -506,7 +523,7 @@ export function MeetingManager() {
               />
               <span className="text-sm text-[var(--portal-muted,#A8A8A8)] flex items-center gap-1.5">
                 <Bell className="w-4 h-4 text-[#D4AF37]" />
-                Notify all active students
+                Notify students (in-app + email with Join link)
               </span>
             </label>
 

@@ -8,6 +8,7 @@ import {
   listMeetings,
   updateMeeting,
 } from "@/lib/data/meeting-store";
+import { sendMeetingInviteEmails } from "@/lib/email/meeting-invite";
 
 const createSchema = z.object({
   title: z.string().min(2, "Title is required"),
@@ -66,6 +67,7 @@ export async function POST(request: NextRequest) {
       meetingUrl = `https://${meetingUrl.replace(/^\/\//, "")}`;
     }
 
+    const notify = parsed.data.notify_students !== false;
     const { meeting, notifiedCount } = createMeeting({
       ...parsed.data,
       meeting_url: meetingUrl,
@@ -73,7 +75,20 @@ export async function POST(request: NextRequest) {
       created_by_name: auth.session.full_name,
     });
 
-    return NextResponse.json({ meeting, notified_count: notifiedCount });
+    let emailedCount = 0;
+    let emailError: string | undefined;
+    if (notify) {
+      const emailResult = await sendMeetingInviteEmails(meeting, "scheduled");
+      emailedCount = emailResult.sent;
+      emailError = emailResult.error;
+    }
+
+    return NextResponse.json({
+      meeting,
+      notified_count: notifiedCount,
+      emailed_count: emailedCount,
+      email_error: emailError,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create meeting";
     return NextResponse.json({ error: message }, { status: 400 });
@@ -101,7 +116,20 @@ export async function PATCH(request: NextRequest) {
 
     await ensureAppDataLoaded();
     const meeting = updateMeeting(id, parsed.data);
-    return NextResponse.json({ meeting });
+
+    let emailedCount = 0;
+    let emailError: string | undefined;
+    if (parsed.data.status === "live") {
+      const emailResult = await sendMeetingInviteEmails(meeting, "live");
+      emailedCount = emailResult.sent;
+      emailError = emailResult.error;
+    }
+
+    return NextResponse.json({
+      meeting,
+      emailed_count: emailedCount,
+      email_error: emailError,
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to update meeting";
     return NextResponse.json({ error: message }, { status: 400 });

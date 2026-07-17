@@ -121,7 +121,7 @@ export function createMeeting(input: CreateMeetingInput): {
       const when = formatMeetingWhen(meeting.scheduled_at);
       const notifications = broadcastToStudents({
         title: `Live Meeting: ${meeting.title}`,
-        message: `Scheduled for ${when}. Join link is available in your portal.`,
+        message: `Scheduled for ${when}. Join: ${meeting.meeting_url}`,
         type: "meeting",
         reference_id: meeting.id,
       });
