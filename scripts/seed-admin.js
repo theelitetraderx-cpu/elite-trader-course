@@ -54,9 +54,8 @@ async function seed() {
   const adminPassword = process.env.ADMIN_SEED_PASSWORD || "Haree@200716";
   const adminEmail = process.env.ADMIN_SEED_EMAIL || "theelitetraderx@gmail.com";
   const adminHash = await bcrypt.hash(adminPassword, 12);
-  const studentHash = await bcrypt.hash("student123", 12);
 
-  const { data: adminUser, error: adminError } = await supabase
+  const { error: adminError } = await supabase
     .from("users")
     .upsert(
       {
@@ -75,24 +74,13 @@ async function seed() {
   if (adminError) console.error("Admin seed error:", adminError);
   else console.log(`✓ Admin user seeded (${adminEmail})`);
 
-  const { data: studentUser, error: studentError } = await supabase
+  // Remove legacy demo students if present
+  const { error: cleanupError } = await supabase
     .from("users")
-    .upsert(
-      {
-        username: "student",
-        password_hash: studentHash,
-        full_name: "John Trader",
-        email: "student@elitetrader.com",
-        role: "student",
-        status: "active",
-      },
-      { onConflict: "username" }
-    )
-    .select("id")
-    .single();
-
-  if (studentError) console.error("Student seed error:", studentError);
-  else console.log("✓ Student user seeded (student / student123)");
+    .delete()
+    .in("username", ["student", "sarah_w"]);
+  if (cleanupError) console.error("Demo student cleanup error:", cleanupError);
+  else console.log("✓ Demo students removed (if any)");
 
   const { error: programsError } = await supabase.from("app_course_programs").upsert(
     {
@@ -105,16 +93,6 @@ async function seed() {
 
   if (programsError) console.error("Programs seed error:", programsError);
   else console.log("✓ Course programs seeded");
-
-  if (studentUser?.id) {
-    await supabase.from("app_course_access").delete().eq("user_id", studentUser.id);
-    const { error: accessError } = await supabase.from("app_course_access").insert({
-      user_id: studentUser.id,
-      course_id: "course-foundation",
-    });
-    if (accessError) console.error("Course access seed error:", accessError);
-    else console.log("✓ Student assigned Foundation course");
-  }
 
   console.log("\nSeed complete!");
   console.log("Run supabase/app-data.sql first if tables are missing.");

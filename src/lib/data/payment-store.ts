@@ -17,84 +17,40 @@ declare global {
   var __elitePaymentsHydrated: boolean | undefined;
 }
 
-const SEED_PAYMENTS: PaymentRecord[] = [
-  {
-    id: "pay-seed-001",
-    student_id: "student-001",
-    student_name: "John Trader",
-    student_email: "student@elitetrader.in",
-    plan_name: "PRO",
-    plan_type: "course",
-    amount: 249,
-    currency: "USD",
-    payment_method: "upi",
-    status: "completed",
-    reference: "UPI-7829341056",
-    notes: "Member code ELITE applied",
-    recorded_by: "admin-001",
-    recorded_by_name: "Elite Admin",
-    paid_at: "2025-06-05T10:30:00.000Z",
-    created_at: "2025-06-05T10:35:00.000Z",
-  },
-  {
-    id: "pay-seed-002",
-    student_id: "student-002",
-    student_name: "Sarah Williams",
-    student_email: "sarah@example.com",
-    plan_name: "ELITE",
-    plan_type: "course",
-    amount: 499,
-    currency: "USD",
-    payment_method: "bank_transfer",
-    status: "completed",
-    reference: "WIRE-20250815-4421",
-    recorded_by: "admin-001",
-    recorded_by_name: "Elite Admin",
-    paid_at: "2025-08-15T14:00:00.000Z",
-    created_at: "2025-08-15T14:05:00.000Z",
-  },
-  {
-    id: "pay-seed-003",
-    student_id: "student-001",
-    student_name: "John Trader",
-    student_email: "student@elitetrader.in",
-    plan_name: "3 Months Signals",
-    plan_type: "signal",
-    amount: 70,
-    currency: "USD",
-    payment_method: "paypal",
-    status: "completed",
-    reference: "PP-9XK7721",
-    recorded_by: "admin-001",
-    recorded_by_name: "Elite Admin",
-    paid_at: "2026-01-12T09:15:00.000Z",
-    created_at: "2026-01-12T09:20:00.000Z",
-  },
-  {
-    id: "pay-seed-004",
-    student_id: "student-002",
-    student_name: "Sarah Williams",
-    student_email: "sarah@example.com",
-    plan_name: "Lifetime Signals",
-    plan_type: "signal",
-    amount: 299,
-    currency: "USD",
-    payment_method: "crypto",
-    status: "pending",
-    reference: "BTC-tx-pending",
-    notes: "Awaiting blockchain confirmation",
-    recorded_by: "admin-001",
-    recorded_by_name: "Elite Admin",
-    paid_at: "2026-07-10T11:00:00.000Z",
-    created_at: "2026-07-10T11:00:00.000Z",
-  },
-];
+const DEMO_PAYMENT_IDS = new Set([
+  "pay-seed-001",
+  "pay-seed-002",
+  "pay-seed-003",
+  "pay-seed-004",
+]);
+
+const DEMO_STUDENT_IDS = new Set(["student-001", "student-002"]);
+
+function stripDemoPayments(payments: PaymentRecord[]): PaymentRecord[] {
+  const demoEmails = new Set([
+    "student@elitetrader.in",
+    "student@elitetrader.com",
+    "sarah@example.com",
+  ]);
+  return payments.filter(
+    (p) =>
+      !DEMO_PAYMENT_IDS.has(p.id) &&
+      !DEMO_STUDENT_IDS.has(p.student_id) &&
+      !demoEmails.has(p.student_email.toLowerCase())
+  );
+}
 
 function loadStore(): PaymentRecord[] {
   const stored = readJsonFile<PaymentRecord[]>(PAYMENTS_FILE);
-  if (stored && stored.length > 0) return stored;
-  writeJsonFile(PAYMENTS_FILE, SEED_PAYMENTS);
-  return [...SEED_PAYMENTS];
+  if (stored) {
+    const cleaned = stripDemoPayments(stored);
+    if (cleaned.length !== stored.length) {
+      writeJsonFile(PAYMENTS_FILE, cleaned);
+    }
+    return cleaned;
+  }
+  writeJsonFile(PAYMENTS_FILE, []);
+  return [];
 }
 
 function getStore(): PaymentRecord[] {
@@ -119,13 +75,17 @@ export async function ensurePaymentsLoaded(): Promise<void> {
 
   const local = loadStore();
   const remote = await fetchJsonDocument<PaymentRecord[]>(REMOTE_DOC_ID);
+  const remoteClean = remote ? stripDemoPayments(remote) : null;
 
-  if (remote && remote.length >= local.length) {
-    global.__elitePaymentStore = remote;
-    writeJsonFile(PAYMENTS_FILE, remote);
+  if (remoteClean && remoteClean.length >= local.length) {
+    global.__elitePaymentStore = remoteClean;
+    writeJsonFile(PAYMENTS_FILE, remoteClean);
+    if (remote && remoteClean.length !== remote.length) {
+      void saveJsonDocument(REMOTE_DOC_ID, remoteClean);
+    }
   } else {
     global.__elitePaymentStore = local;
-    if (local.length) void saveJsonDocument(REMOTE_DOC_ID, local);
+    void saveJsonDocument(REMOTE_DOC_ID, local);
   }
 
   global.__elitePaymentsHydrated = true;

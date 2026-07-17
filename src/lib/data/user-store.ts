@@ -28,6 +28,23 @@ type SeedUser = Omit<StoredUser, "password_hash" | "created_at" | "updated_at"> 
   updated_at?: string;
 };
 
+/** Demo student accounts that should never appear in production */
+const DEMO_STUDENT_IDS = new Set(["student-001", "student-002"]);
+const DEMO_STUDENT_USERNAMES = new Set(["student", "sarah_w"]);
+const DEMO_STUDENT_EMAILS = new Set([
+  "student@elitetrader.in",
+  "student@elitetrader.com",
+  "sarah@example.com",
+]);
+
+function isDemoStudent(user: Pick<StoredUser, "id" | "username" | "email">) {
+  return (
+    DEMO_STUDENT_IDS.has(user.id) ||
+    DEMO_STUDENT_USERNAMES.has(user.username.toLowerCase()) ||
+    DEMO_STUDENT_EMAILS.has(user.email.toLowerCase())
+  );
+}
+
 const SEED_USERS: SeedUser[] = [
   {
     id: "admin-001",
@@ -42,35 +59,6 @@ const SEED_USERS: SeedUser[] = [
     created_at: "2025-01-01T00:00:00Z",
     updated_at: "2026-03-01T00:00:00Z",
     last_login: "2026-07-04T09:00:00Z",
-  },
-  {
-    id: "student-001",
-    username: "student",
-    password: "student123",
-    full_name: "John Trader",
-    email: "student@elitetrader.in",
-    phone: "+91 98765 43210",
-    role: "student",
-    status: "active",
-    course_ids: [],
-    created_at: "2025-06-01T00:00:00Z",
-    updated_at: "2026-03-01T00:00:00Z",
-    last_login: "2026-07-03T08:00:00Z",
-  },
-  {
-    id: "student-002",
-    username: "sarah_w",
-    password: "sarah123",
-    full_name: "Sarah Williams",
-    email: "sarah@example.com",
-    phone: "+1 555-010-2200",
-    role: "student",
-    status: "active",
-    course_ids: [],
-    expiry_date: "2027-06-01",
-    created_at: "2025-08-15T00:00:00Z",
-    updated_at: "2026-02-28T00:00:00Z",
-    last_login: "2026-07-02T14:30:00Z",
   },
 ];
 
@@ -107,12 +95,18 @@ function persistStore(store: StoredUser[]) {
   writeJsonFile(USERS_FILE, store);
 }
 
+function stripDemoStudents(users: StoredUser[]): StoredUser[] {
+  return users.filter((u) => !isDemoStudent(u));
+}
+
 function loadStore(): StoredUser[] {
   const saved = readJsonFile<StoredUser[]>(USERS_FILE);
   if (saved?.length) {
-    const primary = saved.find((u) => u.id === PROTECTED_ADMIN_ID);
+    let users = stripDemoStudents(saved);
+    let changed = users.length !== saved.length;
+
+    const primary = users.find((u) => u.id === PROTECTED_ADMIN_ID);
     if (primary) {
-      let changed = false;
       if (primary.role === "admin") {
         primary.role = "super_admin";
         changed = true;
@@ -133,10 +127,10 @@ function loadStore(): StoredUser[] {
           changed = true;
         }
       }
-
-      if (changed) writeJsonFile(USERS_FILE, saved);
     }
-    return saved;
+
+    if (changed) writeJsonFile(USERS_FILE, users);
+    return users;
   }
   const initial = buildInitialStore();
   persistStore(initial);
